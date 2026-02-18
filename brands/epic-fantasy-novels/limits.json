@@ -1,0 +1,34 @@
+{
+  "_comment": "HARD CAPS. System will not spend above these. Edit carefully.",
+  "_note": "EFN is affiliate/content — no paid ads currently active. All caps set to zero until campaigns are ready. Update before enabling any platform.",
+  "currency": "USD",
+  "amazon": {
+    "daily_max": 0.00,
+    "weekly_max": 0.00,
+    "monthly_max": 0.00,
+    "max_bid_per_keyword": 0.00,
+    "max_campaign_daily_budget": 0.00,
+    "alert_at_percent": 80,
+    "_note": "Amazon Ads not planned for EFN (no direct product to sell). Update if this changes."
+  },
+  "facebook": {
+    "daily_max": 0.00,
+    "weekly_max": 0.00,
+    "monthly_max": 0.00,
+    "max_ad_set_daily_budget": 0.00,
+    "alert_at_percent": 80,
+    "_note": "Disabled until Facebook strategy defined. Starting budget TBD."
+  },
+  "twitter": {
+    "daily_max": 0.00,
+    "weekly_max": 0.00,
+    "monthly_max": 0.00,
+    "alert_at_percent": 80,
+    "_note": "Twitter/X organic only for now. Enable and set limits if promoted tweets are used."
+  },
+  "global": {
+    "daily_max_all_platforms": 0.00,
+    "monthly_max_all_platforms": 0.00,
+    "emergency_stop_on_anomaly": true
+  }
+}

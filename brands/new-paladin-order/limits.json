@@ -1,0 +1,31 @@
+{
+  "_comment": "HARD CAPS. System will not spend above these. Edit carefully.",
+  "currency": "USD",
+  "amazon": {
+    "daily_max": 15.00,
+    "weekly_max": 75.00,
+    "monthly_max": 250.00,
+    "max_bid_per_keyword": 1.25,
+    "max_campaign_daily_budget": 12.00,
+    "alert_at_percent": 80
+  },
+  "facebook": {
+    "daily_max": 15.00,
+    "weekly_max": 75.00,
+    "monthly_max": 250.00,
+    "max_ad_set_daily_budget": 12.00,
+    "alert_at_percent": 80
+  },
+  "twitter": {
+    "daily_max": 0.00,
+    "weekly_max": 0.00,
+    "monthly_max": 0.00,
+    "alert_at_percent": 80,
+    "_note": "Twitter/X disabled until manually enabled"
+  },
+  "global": {
+    "daily_max_all_platforms": 25.00,
+    "monthly_max_all_platforms": 450.00,
+    "emergency_stop_on_anomaly": true
+  }
+}
