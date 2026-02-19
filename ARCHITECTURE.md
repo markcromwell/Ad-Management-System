@@ -306,20 +306,36 @@ Daily cron (6 AM):
 
 ---
 
-## Data model (flat files, Postgres if scale demands it)
+## Data model (SQLite, Postgres if scale demands it)
 
-At current indie scale, daily JSON snapshots + a spend log are sufficient. If spend crosses ~$500/month or multiple brands are active simultaneously, migrate to Postgres with this schema:
+All persistent data goes into `data/ad_manager.db` (SQLite). Raw API responses are
+also saved as daily JSON snapshots in `data/{brand}/{platform}/{date}.json` for
+replay and debugging — but SQLite is the authoritative store for all analysis,
+safety checks, and CR logic.
 
+SQLite is the right choice at indie scale: zero server overhead, single file,
+WAL mode for concurrent readers, and `sqlite3` ships with Python. Migrate to
+Postgres if spend crosses ~$5k/month or if multiple brands require true parallel writes.
+
+Initialize the database with:
+```bash
+python scripts/init_db.py
 ```
-books            — ASIN, title, series, marketplace, format, ku_enrolled
-campaigns        — internal canonical campaign (maps to platform entities)
-platform_entities — maps internal IDs → platform campaign/adgroup/creative IDs
-change_requests  — full CR log (see above)
-ad_metrics_daily — platform-normalized: spend, clicks, impressions, orders, sales
-kdp_metrics_daily — KENP pages read, royalties, by ASIN/marketplace/date
-spend_log        — rolling daily/weekly/monthly totals per brand/platform
-audit_log        — every system action with timestamp, user/process, outcome
+
+**Tables:**
 ```
+books              — ASIN, title, series, marketplace, format, ku_enrolled
+campaigns          — internal canonical campaigns (one per logical campaign)
+platform_entities  — maps internal IDs → platform campaign/adgroup/creative IDs
+change_requests    — full CR log with before/after/rationale/status
+ad_metrics_daily   — platform-normalized: spend, clicks, impressions, orders, sales
+kdp_metrics_daily  — KENP pages read, royalties, by ASIN/marketplace/date
+spend_log          — every spend event (SafetyGuard's source of truth)
+spend_reconciliation — daily local-vs-platform comparison results
+audit_log          — every system action with timestamp, process, outcome
+```
+
+Full schema: `data/schema.sql`
 
 Join key for BlendedACOS: `(asin, marketplace, date_range)`.
 
