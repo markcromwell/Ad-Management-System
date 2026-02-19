@@ -2,7 +2,7 @@
 # Install: pip install -r requirements.txt
 
 # Platform SDKs
-python-amazon-ad-api>=2.0.0       # Amazon Advertising API
+python-amazon-ad-api>=0.6.0        # Amazon Advertising API
 facebook-business>=18.0.0         # Meta Marketing API
 
 # HTTP & utilities
