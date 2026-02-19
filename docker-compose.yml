@@ -1,0 +1,19 @@
+services:
+  ad-manager:
+    build: .
+    container_name: ad-manager
+    env_file:
+      - .env
+    volumes:
+      # Persistent data: SQLite DB + raw API snapshots
+      - ./data:/app/data
+      # Logs: cron output + audit trail
+      - ./logs:/app/logs
+      # Brand configs: writable (system creates lockfiles here)
+      - ./brands:/app/brands
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

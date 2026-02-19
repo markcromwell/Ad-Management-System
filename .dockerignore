@@ -1,0 +1,18 @@
+.git
+.env
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Runtime data — mounted as volumes, not baked in
+data/ad_manager.db
+data/new-paladin-order/
+data/epic-fantasy-novels/
+logs/
+
+# Local dev artifacts
+.venv
+venv
+*.egg-info
