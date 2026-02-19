@@ -1,0 +1,50 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:   # allow manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write .env to VM and restart container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            set -e
+
+            # Pull latest code
+            cd ~/Ad-Management-System
+            git pull origin master
+
+            # Write .env from GitHub Secrets
+            cat > .env << 'ENVEOF'
+            AMAZON_ADS_CLIENT_ID=${{ secrets.AMAZON_ADS_CLIENT_ID }}
+            AMAZON_ADS_CLIENT_SECRET=${{ secrets.AMAZON_ADS_CLIENT_SECRET }}
+            AMAZON_ADS_REFRESH_TOKEN=${{ secrets.AMAZON_ADS_REFRESH_TOKEN }}
+            AMAZON_ADS_PROFILE_ID=${{ secrets.AMAZON_ADS_PROFILE_ID }}
+            META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN }}
+            META_AD_ACCOUNT_ID=${{ secrets.META_AD_ACCOUNT_ID }}
+            GMAIL_ADDRESS=${{ secrets.GMAIL_ADDRESS }}
+            GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
+            STATUS_EMAIL=${{ secrets.STATUS_EMAIL }}
+            XAI_API_KEY=${{ secrets.XAI_API_KEY }}
+            BACKUP_RCLONE_DEST=${{ secrets.BACKUP_RCLONE_DEST }}
+            ENVEOF
+
+            chmod 600 .env
+
+            # Restart container
+            docker compose down
+            docker compose up -d --build
+
+            echo "Deploy complete."
+            docker compose ps
