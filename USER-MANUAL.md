@@ -30,7 +30,8 @@ This manual assumes you have never run ads before and have never used these plat
 7. [Spend Limits — Understanding the Safety Layer](#7-spend-limits)
 8. [Emergency Procedures](#8-emergency-procedures)
 9. [Initial Setup — What Has to Happen Before the System Can Run](#9-initial-setup)
-10. [Glossary](#10-glossary)
+10. [Backup and Recovery](#10-backup-and-recovery)
+11. [Glossary](#11-glossary)
 
 ---
 
@@ -992,3 +993,220 @@ The system will pick it up at next run.
 **Sponsored Products** — The main Amazon ad type for books. Appears in search results and on product pages.
 
 **Target ACOS** — The ACOS you're aiming for. Set per brand in `rules.json`. The system tries to keep BlendedACOS at or below this.
+
+---
+
+## 10. Backup and Recovery
+
+### What gets backed up
+
+Every Sunday at 9AM UTC the system backs up:
+
+| File | Why it matters |
+|------|---------------|
+| `data/ad_manager.db` | The entire database — all CRs, metrics, spend history |
+| `brands/*/config.json` | Ad account IDs, ASINs, KENP rate |
+| `brands/*/limits.json` | Hard spend caps |
+| `brands/*/rules.json` | Optimization thresholds |
+| `data/schema.sql` | Database structure (for rebuilding from scratch) |
+
+**What is NOT backed up:**
+- `.env` — credentials never leave the VM. You store these separately (see below).
+- Raw API JSON snapshots — these can be re-pulled from the platforms.
+- Logs — useful but not critical for recovery.
+
+### Where backups go
+
+Backups go to the family Google Drive using rclone. They're stored in a folder called `ad-manager-backups`, organized by date:
+
+```
+ad-manager-backups/
+  2026-03-16T090000Z/
+    ad_manager.db
+    schema.sql
+    brands/
+      new-paladin-order/
+        config.json
+        limits.json
+        rules.json
+```
+
+The system keeps 30 days of backups and automatically prunes older ones.
+
+---
+
+### Setting up Google Drive backups (one-time)
+
+This is the only setup step that requires doing part of it on your Windows machine, because the VM has no browser for Google's OAuth login.
+
+#### Step 1 — Install rclone on the VM
+
+```bash
+# On Omnius's VM:
+curl https://rclone.org/install.sh | sudo bash
+rclone --version   # confirm it installed
+```
+
+#### Step 2 — Install rclone on your Windows machine
+
+Download from https://rclone.org/downloads/ — grab the Windows 64-bit .zip, extract it, put `rclone.exe` somewhere convenient (e.g. `C:\Tools\rclone\rclone.exe`).
+
+#### Step 3 — Authorize Google Drive on your Windows machine
+
+Open a command prompt on Windows and run:
+
+```
+rclone authorize "drive"
+```
+
+This opens a browser window. Log into the Google account that owns your family Drive (whichever account has the 5TB plan). Click **Allow**.
+
+Rclone will print a token block in the terminal that looks like:
+
+```
+Paste the following into your remote machine --->
+{"access_token":"ya29.A0...","token_type":"Bearer","refresh_token":"1//0g...","expiry":"2026-03-16T10:00:00Z"}
+<---End paste
+```
+
+Copy everything between the arrows (the `{...}` JSON blob). You'll need this in Step 4.
+
+#### Step 4 — Configure rclone on the VM
+
+On Omnius's VM, run:
+
+```bash
+rclone config
+```
+
+Walk through the prompts:
+
+```
+n) New remote
+name> gdrive
+Storage> drive                    (type "drive" and press Enter)
+client_id>                        (leave blank, press Enter)
+client_secret>                    (leave blank, press Enter)
+scope> 1                          (option 1 = full access)
+root_folder_id>                   (leave blank)
+service_account_file>             (leave blank)
+Edit advanced config? n
+Use auto config? n                (IMPORTANT — say no, VM has no browser)
+Paste token here>                 (paste the JSON blob from Step 3)
+Configure as a Shared Drive? n
+```
+
+Verify it works:
+
+```bash
+rclone lsd gdrive:
+```
+
+You should see your Google Drive folders listed. If you do, rclone is configured.
+
+#### Step 5 — Set the destination in .env
+
+On the VM, open `~/.env` (or the `.env` in the project folder) and add:
+
+```
+BACKUP_RCLONE_DEST=gdrive:ad-manager-backups
+```
+
+The folder `ad-manager-backups` doesn't need to exist — rclone creates it on first backup.
+
+#### Step 6 — Test the backup
+
+```bash
+python scripts/backup.py
+```
+
+Then open Google Drive and confirm the folder appeared with today's files inside.
+
+---
+
+### Recovering from a lost VM
+
+If the VM is gone (hardware failure, provider issue, laptop lost on the way to Apopka), here's how to get back up:
+
+#### 1. Spin up a new VM
+
+Same specs as before — Ubuntu 22.04, the VM provider you're using for Omnius.
+
+#### 2. Install Docker
+
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# log out and back in
+```
+
+#### 3. Clone the repo
+
+```bash
+git clone https://github.com/markcromwell/Ad-Management-System
+cd Ad-Management-System
+```
+
+#### 4. Restore credentials
+
+The `.env` file was never backed up — this is intentional. You need to recreate it from the original credential sources:
+
+| Credential | Where to get it again |
+|------------|----------------------|
+| `AMAZON_ADS_*` | advertising.amazon.com → API access (may need to regenerate refresh token) |
+| `META_ACCESS_TOKEN` | business.facebook.com → System Users → regenerate token |
+| `GMAIL_APP_PASSWORD` | myaccount.google.com → Security → App Passwords |
+| `XAI_API_KEY` | console.x.ai |
+| `WP_APP_PASSWORD` | epicfantasynovels.com → wp-admin → Users → Application Passwords |
+
+**This is why the `.env` is not backed up to Google Drive** — it contains API keys that have no expiry. If your Drive were ever compromised, those keys could be used to spend your ad budget or post to your accounts. Reconstructing them from the original platforms takes 20 minutes and is the safer approach.
+
+**Recommended:** Keep a personal password manager entry (1Password, Bitwarden, etc.) with the list of where each credential comes from. Not the credentials themselves — just the source URLs and account names. That's safe to store anywhere.
+
+#### 5. Restore the database
+
+Install rclone on the new VM (Step 1 above), reconfigure Google Drive auth (Steps 2–4), then:
+
+```bash
+# List available backups
+rclone lsd gdrive:ad-manager-backups
+
+# Copy the most recent backup
+rclone copy "gdrive:ad-manager-backups/2026-03-16T090000Z" ./restored/
+
+# Move the database into place
+cp restored/ad_manager.db data/ad_manager.db
+
+# Restore brand configs
+cp -r restored/brands/* brands/
+```
+
+#### 6. Start the system
+
+```bash
+cp .env.example .env   # fill in credentials you reconstructed in step 4
+docker compose up -d
+docker compose logs -f  # watch startup
+```
+
+The system picks up exactly where it left off. CRs, spend history, metrics — all restored.
+
+---
+
+### Checking backup health
+
+You don't need to do anything week-to-week. But once a month, it's worth a quick sanity check:
+
+1. Open Google Drive → `ad-manager-backups`
+2. Confirm there are recent weekly folders (dates from the past few weeks)
+3. Click into the most recent one — confirm `ad_manager.db` is there and is a reasonable size (should grow over time as history accumulates)
+
+If you don't see recent backups, check the Sunday cron log:
+
+```bash
+docker compose exec ad-manager tail -100 /app/logs/cron.log | grep backup
+```
+
+---
+
+## 11. Glossary
