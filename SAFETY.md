@@ -41,7 +41,9 @@ is reporting spend accurately in real time — it tracks its own spend log.
   "global": {
     "daily_max_all_platforms": 40.00,
     "monthly_max_all_platforms": 700.00,
-    "emergency_stop_on_anomaly": true
+    "emergency_stop_on_anomaly": true,
+    "reconciliation_tolerance": 2.00,
+    "error_window_minutes": 10
   }
 }
 ```
@@ -97,6 +99,26 @@ Never trust platform real-time spend as the source of truth for limits.
 
 ---
 
+## Spend reconciliation
+
+The local spend log is the source of truth for limits — but it can drift if a job fails, an API times out, or a partial day is missed. A daily reconciliation check catches this before it becomes a silent risk.
+
+```
+once per day, after data pull:
+  for each brand / platform:
+    local_spend = sum(spend-log.json entries for today)
+    platform_spend = spend from platform API daily summary
+    if abs(local_spend - platform_spend) > reconciliation_tolerance:
+      freeze automation for that brand/platform
+      alert human with both figures
+```
+
+`reconciliation_tolerance` defaults to `$2.00`. Store in `brands/{name}/limits.json`.
+
+If reconciliation fails, the system does **not** apply any CRs for that brand until a human clears it. Reads and dry-runs are unaffected.
+
+---
+
 ## Circuit breakers (automatic emergency stops)
 
 The system halts and triggers emergency-pause if any of these are detected:
@@ -104,10 +126,22 @@ The system halts and triggers emergency-pause if any of these are detected:
 | Trigger | Threshold |
 |---------|-----------|
 | Daily spend spike | >150% of previous 7-day average daily spend |
-| ACOS spike | ACOS > 300% of target for 2 consecutive days |
+| ACOS spike — non-KU | Direct ACOS > 300% of target for 2 consecutive days |
+| ACOS spike — KU | Direct ACOS > 300% AND BlendedACOS > 300% after full lag window |
 | Spend limit hit | Any daily/weekly/monthly limit reached |
-| API error storm | >10 consecutive API errors (possible credential issue) |
+| API error storm | >10 consecutive API errors within `error_window_minutes` (default: 10) |
 | Anomalous bid | Any bid update that would be >3× the current bid |
+
+**KU note:** For KU-enrolled titles, Direct ACOS alone can look catastrophic while BlendedACOS remains healthy. The KENP lag window makes day-to-day Direct ACOS noisy. Only trigger the breaker when both views confirm a problem.
+
+**API error window:** Errors must be both consecutive *and* within the window. This prevents a slow overnight API blip from halting everything.
+
+**Spend estimation confidence:** `SafetyGuard.check()` relies on `estimated_cost`, but CPC bids are not guaranteed spend. Tag each estimate with a confidence level:
+- `high` — budget changes (fixed)
+- `medium` — bid changes on stable, known-volume campaigns
+- `low` — bid increases on high-volume or newly-ramping campaigns
+
+`low` confidence estimates require human approval or are capped at a reduced delta (5% instead of 15%).
 
 On circuit break: all campaigns paused, lockfile created, alert sent,
 human review required before resuming.

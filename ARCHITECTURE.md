@@ -26,24 +26,27 @@ Every action that changes the outside world (bids, budgets, pauses, new campaign
 
 ```
 CR fields:
-  id           — unique ID
-  brand        — which brand
-  platform     — amazon / facebook / twitter
-  action       — UPDATE_BID / UPDATE_BUDGET / PAUSE / ADD_NEGATIVE / etc.
-  entity_id    — platform entity (campaign/ad group/keyword ID)
-  before       — current value
-  after        — proposed value
-  rationale    — why (from optimizer or human)
-  risk_level   — low / medium / high
-  status       — pending / approved / rejected / applied / rolled_back
-  approved_by  — who approved (human name or "auto" if within pre-approved rules)
-  applied_at   — timestamp
+  id                — unique ID
+  brand             — which brand
+  platform          — amazon / facebook / twitter
+  action            — UPDATE_BID / UPDATE_BUDGET / PAUSE / ADD_NEGATIVE / etc.
+  entity_id         — platform entity (campaign/ad group/keyword ID)
+  before            — current value
+  after             — proposed value
+  rationale         — why (from optimizer or human)
+  risk_level        — low / medium / high
+  status            — pending / approved / rejected / applied / rolled_back
+  approved_by       — who approved (human name or "auto" if within pre-approved rules)
+  applied_at        — timestamp
+  last_changed_at   — timestamp of previous CR applied to this entity (for cooldown)
+  expected_impact   — {spend_change_per_day, acos_direction, confidence} (for human review)
 ```
 
 **Auto-approval rules** (no human needed):
 - Bid change ≤ 15% in either direction on a known entity
 - Budget change ≤ 15% in either direction
 - Pausing a keyword that has ≥ 40 clicks and zero orders AND zero KENP
+- Entity has not been changed within the last `min_days_between_changes` (default: 3 days)
 
 **Human approval required:**
 - Any new campaign or ad group creation
@@ -131,6 +134,18 @@ Profit = EffectiveRevenue - Spend
 
 **KENP lag:** Page reads typically lag ad clicks by 1–7 days. Don't evaluate a keyword's KU performance until at least 7 days after its last significant click volume. Store a `kenp_lag_days` value per brand (default: 7).
 
+**BlendedACOS confidence flag:** KENP is not campaign-attributed — it's only attributed to an ASIN. When multiple campaigns run for the same ASIN simultaneously, or a campaign transition happens inside the lag window, BlendedACOS can credit the wrong campaign. Tag every calculation:
+
+```
+blended_acos_confidence:
+  high   — only one active campaign for this ASIN during the full lag window
+  medium — multiple campaigns, but no major changes or transitions
+  low    — campaign transitions inside the lag window
+```
+
+- Auto-approve optimization CRs only on **high** or **medium** confidence
+- **Never auto-approve** based on low-confidence BlendedACOS — flag for human review
+
 **Two ROI views in every report:**
 1. **Direct** — Amazon-reported attributed sales only (conservative, fast)
 2. **Blended** — Direct + KDP KENP + royalties (true picture, lagged)
@@ -162,6 +177,10 @@ Optimization rules use Blended. Short-term alerts use Direct (available sooner).
   "twitter": {
     "account_id": "",
     "enabled": false
+  },
+  "campaign_roles": {
+    "note": "Maps internal campaign names to core|experiment. Circuit breakers pause experiments first; core requires human approval to pause.",
+    "examples": { "Sponsored Products - Auto": "core", "Sponsored Products - Test Broad": "experiment" }
   }
 }
 ```
